@@ -3,8 +3,12 @@ from __future__ import division
 
 import time
 import argparse
+import json
 import numpy as np
-import cPickle as pickle
+try:
+    import cPickle as pickle
+except:
+    import pickle
 from collections import Counter
 
 
@@ -26,12 +30,15 @@ def entropy_spatial(sessions):
 
 class DataFoursquare(object):
     def __init__(self, trace_min=10, global_visit=10, hour_gap=72, min_gap=10, session_min=2, session_max=10,
-                 sessions_min=2, train_split=0.8, embedding_len=50):
-        tmp_path = "../data/"
-        self.TWITTER_PATH = tmp_path + 'foursquare/tweets_clean.txt'
-        self.VENUES_PATH = tmp_path + 'foursquare/venues_all.txt'
+                 sessions_min=2, train_split=0.8, embedding_len=50, tmp_path='../data/', 
+                 twitter_fname='tweets_clean.txt', venue_fname='venues_all.txt', save_name='foursquare', 
+                 delimiter=''):
+        self.TWITTER_PATH = tmp_path + twitter_fname
+        self.VENUES_PATH = tmp_path + venue_fname
         self.SAVE_PATH = tmp_path
-        self.save_name = 'foursquare'
+        self.save_name = save_name
+        
+        self.delimiter = delimiter
 
         self.trace_len_min = trace_min
         self.location_global_visit_min = global_visit
@@ -63,7 +70,7 @@ class DataFoursquare(object):
     def load_trajectory_from_tweets(self):
         with open(self.TWITTER_PATH) as fid:
             for i, line in enumerate(fid):
-                _, uid, _, _, tim, _, _, tweet, pid = line.strip('\r\n').split('')
+                _, uid, _, _, tim, _, _, tweet, pid = line.strip('\r\n').split(self.delimiter)
                 if uid not in self.data:
                     self.data[uid] = [[pid, tim]]
                 else:
@@ -140,7 +147,7 @@ class DataFoursquare(object):
     def load_venues(self):
         with open(self.TWITTER_PATH, 'r') as fid:
             for line in fid:
-                _, uid, lon, lat, tim, _, _, tweet, pid = line.strip('\r\n').split('')
+                _, uid, lon, lat, tim, _, _, tweet, pid = line.strip('\r\n').split(self.delimiter)
                 self.pid_loc_lat[pid] = [float(lon), float(lat)]
 
     def venues_lookup(self):
@@ -237,11 +244,18 @@ class DataFoursquare(object):
 
         return parameters
 
-    def save_variables(self):
+    def save_variables(self, mode='json'):
         foursquare_dataset = {'data_neural': self.data_neural, 'vid_list': self.vid_list, 'uid_list': self.uid_list,
                               'parameters': self.get_parameters(), 'data_filter': self.data_filter,
                               'vid_lookup': self.vid_lookup}
-        pickle.dump(foursquare_dataset, open(self.SAVE_PATH + self.save_name + '.pk', 'wb'))
+        try:
+            os.mkdir(SAVE_PATH)
+        except:
+            pass
+        if mode == 'pickle':
+            pickle.dump(foursquare_dataset, open('/'.join([self.SAVE_PATH, self.save_name + '.pk']) , 'wb'))
+        else:
+            json.dump(foursquare_dataset, open('/'.join([self.SAVE_PATH, self.save_name + '.json']) , 'w'))
 
 
 def parse_args():
@@ -254,6 +268,10 @@ def parse_args():
     parser.add_argument('--session_min', type=int, default=5, help="control the length of session not too short")
     parser.add_argument('--sessions_min', type=int, default=5, help="the minimum amount of the good user's sessions")
     parser.add_argument('--train_split', type=float, default=0.8, help="train/test ratio")
+    parser.add_argument('--save_mode', type=str, default='json', help="json / pickle")
+    parser.add_argument('--delimiter', type=str, default='', help="delimiter used in the raw file")
+    parser.add_argument('--twitter_fname', type=str, default='tweets_clean.txt', help="filename for the raw input")
+    parser.add_argument('--save_name', type=str, default='foursquare', help="intermediate filename")
     return parser.parse_args()
 
 
@@ -262,7 +280,9 @@ if __name__ == '__main__':
     data_generator = DataFoursquare(trace_min=args.trace_min, global_visit=args.global_visit,
                                     hour_gap=args.hour_gap, min_gap=args.min_gap,
                                     session_min=args.session_min, session_max=args.session_max,
-                                    sessions_min=args.sessions_min, train_split=args.train_split)
+                                    sessions_min=args.sessions_min, train_split=args.train_split,
+                                    twitter_fname=args.twitter_fname, save_name=args.save_name, delimiter=args.delimiter
+                                   )
     parameters = data_generator.get_parameters()
     print('############PARAMETER SETTINGS:\n' + '\n'.join([p + ':' + str(parameters[p]) for p in parameters]))
     print('############START PROCESSING:')
