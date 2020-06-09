@@ -291,18 +291,23 @@ def generate_queue(train_idx, mode, mode2):
 
 """
 Get accuracy of top-1, top-5, and top-10
+
+acc[0] : top-10
+acc[1] : top-5
+acc[2] : top-1
 """
 def get_acc(target, scores):
+    TOPK = 10
     """target and scores are torch cuda Variable"""
     target = target.data.cpu().numpy()
-    val, idxx = scores.data.topk(10, 1)
+    val, idxx = scores.data.topk(TOPK, 1)
     predx = idxx.cpu().numpy()
     acc = np.zeros((3, 1))
     for i, p in enumerate(predx):
         t = target[i]
-        if t in p[:10] and t > 0:
+        if t in p[:TOPK] and t > 0:
             acc[0] += 1
-        if t in p[:5] and t > 0:
+        if t in p[:TOPK//2] and t > 0:
             acc[1] += 1
         if t == p[0] and t > 0:
             acc[2] += 1
@@ -361,11 +366,15 @@ def run_simple(data, run_idx, mode, lr, clip, model, optimizer, criterion, mode2
     queue_len = len(run_queue)
 
     users_acc = {}
+    users_acc5 = {}
+    users_acc10 = {}
     for c in range(queue_len):
         optimizer.zero_grad()
         u, i = run_queue.popleft()
         if u not in users_acc:
             users_acc[u] = [0, 0]
+            users_acc5[u] = [0, 0]
+            users_acc10[u] = [0, 0]
         loc = data[u][i]['loc'].cuda()
         tim = data[u][i]['tim'].cuda()
         target = data[u][i]['target'].cuda()
@@ -404,9 +413,13 @@ def run_simple(data, run_idx, mode, lr, clip, model, optimizer, criterion, mode2
                 pass
             optimizer.step()
         elif mode == 'test':
-            users_acc[u][0] += len(target)
             acc = get_acc(target, scores)
+            users_acc[u][0] += len(target)
             users_acc[u][1] += acc[2]
+            users_acc5[u][0] += len(target)
+            users_acc5[u][1] += acc[1]
+            users_acc10[u][0] += len(target)
+            users_acc10[u][1] += acc[0]
         total_loss.append(loss.data.cpu().numpy())
 
     avg_loss = np.mean(total_loss, dtype=np.float64)
@@ -414,11 +427,20 @@ def run_simple(data, run_idx, mode, lr, clip, model, optimizer, criterion, mode2
         return model, avg_loss
     elif mode == 'test':
         users_rnn_acc = {}
-        for u in users_acc:
+        users_rnn_acc5 = {}
+        users_rnn_acc10 = {}
+        assert users_acc.keys() == users_acc5.keys() and users_acc.keys() == users_acc10.keys(), 'User keys are not in sync'
+        for u in users_acc.keys():
             tmp_acc = users_acc[u][1] / users_acc[u][0]
             users_rnn_acc[u] = tmp_acc.tolist()[0]
+            tmp_acc5 = users_acc5[u][1] / users_acc5[u][0]
+            users_rnn_acc5[u] = tmp_acc5.tolist()[0]
+            tmp_acc10 = users_acc10[u][1] / users_acc10[u][0]
+            users_rnn_acc10[u] = tmp_acc10.tolist()[0]
         avg_acc = np.mean([users_rnn_acc[x] for x in users_rnn_acc])
-        return avg_loss, avg_acc, users_rnn_acc
+        avg_acc5 = np.mean([users_rnn_acc5[x] for x in users_rnn_acc5])
+        avg_acc10 = np.mean([users_rnn_acc10[x] for x in users_rnn_acc10])
+        return avg_loss, avg_acc, users_rnn_acc, avg_acc5, avg_acc10
 
 
 """

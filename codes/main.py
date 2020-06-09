@@ -19,7 +19,6 @@ from train import run_simple, RnnParameterData, generate_input_history, markov, 
     generate_input_long_history, generate_input_long_history2
 from model import TrajPreSimple, TrajPreAttnAvgLongUser, TrajPreLocalAttnLong
 
-
 def run(args):
     parameters = RnnParameterData(loc_emb_size=args.loc_emb_size, uid_emb_size=args.uid_emb_size,
                                   voc_emb_size=args.voc_emb_size, tim_emb_size=args.tim_emb_size,
@@ -62,7 +61,7 @@ def run(args):
                                                      factor=parameters.lr_decay, threshold=1e-3)
 
     lr = parameters.lr
-    metrics = {'train_loss': [], 'valid_loss': [], 'accuracy': [], 'valid_acc': {}}
+    metrics = {'train_loss': [], 'valid_loss': [], 'accuracy': [], 'accuracy5': [], 'accuracy10': [], 'valid_acc': {}}
 
     candidate = parameters.data_neural.keys()
     avg_acc_markov, users_acc_markov = markov(parameters, candidate)
@@ -92,7 +91,7 @@ def run(args):
     SAVE_PATH = args.save_path
     tmp_path = 'checkpoint/'
     try:
-        os.mkdir(SAVE_PATH + tmp_path)
+        os.makedirs('/'.join([SAVE_PATH, tmp_path]))
     except:
         pass
     for epoch in range(parameters.epoch):
@@ -103,16 +102,18 @@ def run(args):
             print('==>Train Epoch:{:0>2d} Loss:{:.4f} lr:{}'.format(epoch, avg_loss, lr))
             metrics['train_loss'].append(avg_loss)
 
-        avg_loss, avg_acc, users_acc = run_simple(data_test, test_idx, 'test', lr, parameters.clip, model,
-                                                  optimizer, criterion, parameters.model_mode)
+        avg_loss, avg_acc, users_acc, avg_acc5, avg_acc10 = run_simple(data_test, test_idx, 'test', lr, parameters.clip, model,
+                                                                       optimizer, criterion, parameters.model_mode)
         print('==>Test Acc:{:.4f} Loss:{:.4f}'.format(avg_acc, avg_loss))
 
         metrics['valid_loss'].append(avg_loss)
         metrics['accuracy'].append(avg_acc)
+        metrics['accuracy5'].append(avg_acc5)
+        metrics['accuracy10'].append(avg_acc10)
         metrics['valid_acc'][epoch] = users_acc
 
         save_name_tmp = 'ep_' + str(epoch) + '.m'
-        torch.save(model.state_dict(), SAVE_PATH + tmp_path + save_name_tmp)
+        torch.save(model.state_dict(), '/'.join([SAVE_PATH, tmp_path]) + save_name_tmp)
 
         scheduler.step(avg_acc)
         lr_last = lr
@@ -120,7 +121,7 @@ def run(args):
         if lr_last > lr:
             load_epoch = np.argmax(metrics['accuracy'])
             load_name_tmp = 'ep_' + str(load_epoch) + '.m'
-            model.load_state_dict(torch.load(SAVE_PATH + tmp_path + load_name_tmp))
+            model.load_state_dict(torch.load('/'.join([SAVE_PATH, tmp_path]) + load_name_tmp))
             print('load epoch={} model state'.format(load_epoch))
         if epoch == 0:
             print('single epoch time cost:{}'.format(time.time() - st))
@@ -131,21 +132,25 @@ def run(args):
 
     mid = np.argmax(metrics['accuracy'])
     avg_acc = metrics['accuracy'][mid]
+    mid5 = np.argmax(metrics['accuracy5'])
+    avg_acc5 = metrics['accuracy5'][mid5]
+    mid10 = np.argmax(metrics['accuracy10'])
+    avg_acc10 = metrics['accuracy10'][mid10]
     load_name_tmp = 'ep_' + str(mid) + '.m'
-    model.load_state_dict(torch.load(SAVE_PATH + tmp_path + load_name_tmp))
+    model.load_state_dict(torch.load('/'.join([SAVE_PATH, tmp_path]) + load_name_tmp))
     save_name = 'res'
-    json.dump({'args': argv, 'metrics': metrics}, fp=open(SAVE_PATH + save_name + '.rs', 'w'), indent=4)
-    metrics_view = {'train_loss': [], 'valid_loss': [], 'accuracy': []}
+    json.dump({'args': argv, 'metrics': metrics}, fp=open('/'.join([SAVE_PATH, save_name]) + '.rs', 'w'), indent=4)
+    metrics_view = {'train_loss': [], 'valid_loss': [], 'accuracy': [], 'accuracy5': [], 'accuracy10': []}
     for key in metrics_view:
         metrics_view[key] = metrics[key]
-    json.dump({'args': argv, 'metrics': metrics_view}, fp=open(SAVE_PATH + save_name + '.txt', 'w'), indent=4)
-    torch.save(model.state_dict(), SAVE_PATH + save_name + '.m')
+    json.dump({'args': argv, 'metrics': metrics_view}, fp=open('/'.join([SAVE_PATH, save_name]) + '.txt', 'w'), indent=4)
+    torch.save(model.state_dict(), '/'.join([SAVE_PATH, save_name]) + '.m')
 
-    for rt, dirs, files in os.walk(SAVE_PATH + tmp_path):
+    for rt, dirs, files in os.walk('/'.join([SAVE_PATH, tmp_path])):
         for name in files:
             remove_path = os.path.join(rt, name)
             os.remove(remove_path)
-    os.rmdir(SAVE_PATH + tmp_path)
+    os.rmdir('/'.join([SAVE_PATH, tmp_path]))
 
     return avg_acc
 
